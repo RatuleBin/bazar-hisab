@@ -112,11 +112,13 @@ dialog .cancel{background:transparent;color:var(--mute)}
 <dialog id="stDlg"><h3>⚙️ সেটিংস</h3>
   <label>ফন্ট বেছে নিন</label><div id="fontList" class="sugg" style="justify-content:flex-start;margin-top:4px"></div>
   <label style="margin-top:16px">☁ সব ডিভাইসে ডেটা মেলানো (সিঙ্ক)</label><div id="syncBox"></div>
-  <button class="ghost" id="stFix" style="margin-top:14px;width:100%">🔄 অ্যাপ রিফ্রেশ (ক্যাশ পরিষ্কার — ডেটা থাকবে)</button><div id="verTx" style="font-size:12px;color:var(--mute);text-align:center;margin-top:4px"></div>
+  <button class="ghost" id="stFix" style="margin-top:14px;width:100%">🔄 অ্যাপ রিফ্রেশ (ক্যাশ পরিষ্কার — ডেটা থাকবে)</button><button class="ghost" id="stDiag" style="width:100%;margin-top:6px">🩺 সমস্যা পরীক্ষা করুন (রিপোর্ট কপি হবে)</button><textarea id="diagTx" rows="10" readonly style="display:none;width:100%;margin-top:6px;font:12px monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px"></textarea>
+  <div id="verTx" style="font-size:12px;color:var(--mute);text-align:center;margin-top:4px"></div>
   <div class="row"><button id="stClose">বন্ধ</button></div></dialog>
 <div class="toast" id="toast" hidden><span id="tMsg"></span><button id="tUndo">ফিরিয়ে আনুন</button></div>
 
 <script>
+let lastErr='';addEventListener('error',e=>{lastErr=(e.message||'')+' (লাইন '+(e.lineno||'?')+')'});addEventListener('unhandledrejection',e=>{lastErr='promise: '+(e.reason&&e.reason.message||e.reason)});
 const KEY='bazar-hisab-v1';
 let db={},del={};
 try{db=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){db={}}
@@ -353,7 +355,7 @@ function renderSt(){
   $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
   $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
 }
-const APP_VER='2026-11-21-3';
+const APP_VER='2026-11-21-4';
 if(/[?&]v=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);
 async function wipeCaches(){try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}catch(e){}}
 async function checkUpdate(){
@@ -362,6 +364,21 @@ async function checkUpdate(){
 }
 let pT=null;
 function softRender(){const a=document.activeElement;if(a&&a.closest&&a.closest('#list')&&a.tagName==='INPUT'&&a.type!=='date'&&a.value){clearTimeout(pT);pT=setTimeout(softRender,2000);return}render()}
+$('stDiag').onclick=async()=>{
+  const L=[],add=(k,v)=>L.push(k+': '+v),T=$('diagTx');T.style.display='block';T.value='পরীক্ষা হচ্ছে…';
+  add('সংস্করণ',APP_VER);add('ঠিকানা',location.origin+location.pathname);
+  add('মোড',window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'ইনস্টল করা অ্যাপ':'ব্রাউজার');add('অনলাইন',navigator.onLine);
+  try{localStorage.setItem('_t','1');add('localStorage লেখা',localStorage.getItem('_t')==='1'?'ঠিক':'ব্যর্থ');localStorage.removeItem('_t')}catch(e){add('localStorage লেখা','ব্যর্থ: '+e.message)}
+  add('IndexedDB লেখা',(await idbSet('_t','1'))?'ঠিক':'ব্যর্থ');
+  try{add('স্থায়ী স্টোরেজ',navigator.storage&&navigator.storage.persisted?((await navigator.storage.persisted())?'হ্যাঁ':'না (ব্রাউজার মুছে ফেলতে পারে)'):'অজানা')}catch(e){}
+  const ms=Object.keys(db).filter(isM);let ni=0,np=0;ms.forEach(k=>db[k].forEach(i=>{ni++;np+=i.paid.length}));
+  add('এই ডিভাইসে ডেটা',ms.length+' মাস, '+ni+' আইটেম, '+np+' খরচ-এন্ট্রি');
+  add('সিঙ্ক কোড',sid?sid.slice(0,6)+'…'+sid.slice(-4):'নেই (ক্লাউড বন্ধ)');
+  if(CLOUD.project&&sid){await sync();add('সিঙ্ক ফল',$('syncSt').textContent)}
+  add('শেষ JS ত্রুটি',lastErr||'নেই');
+  T.value=L.join('\n');T.onclick=()=>T.select();
+  try{await navigator.clipboard.writeText(T.value);T.value+='\n(রিপোর্ট কপি হয়েছে)'}catch(e){T.select()}
+};
 $('stFix').onclick=async()=>{await wipeCaches();location.replace(location.pathname+'?v='+Date.now())};
 $('syncSt').onclick=sync;
 $('st').onclick=()=>{renderSt();$('stDlg').showModal()};
