@@ -322,21 +322,23 @@ async function idbSet(k,v){try{const d=await idb();return await new Promise(r=>{
 async function idbGet(k){try{const d=await idb();return await new Promise(r=>{const q=d.transaction('k').objectStore('k').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem('bazar-del-v1',JSON.stringify(del))}catch(e){}idbSet('db',JSON.stringify({db:db,del:del}))}
 let sid=localStorage.getItem('bazar-sync-id')||'',syncT=null,syncing=false;
+{const m=/[#&]sync=([A-Za-z0-9]{20,})/.exec(location.hash);if(m){sid=m[1];try{localStorage.setItem('bazar-sync-id',sid)}catch(e){}history.replaceState(null,'',location.pathname+location.search)}}
 if(CLOUD.project&&!sid){const a=new Uint8Array(16);crypto.getRandomValues(a);sid='bh'+[...a].map(x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem('bazar-sync-id',sid)}
 const cUrl=()=>'https://firestore.googleapis.com/v1/projects/'+CLOUD.project+'/databases/(default)/documents/ledgers/'+sid+'?key='+CLOUD.key;
-const setSt=t=>{const e=$('syncSt');if(e)e.textContent=t};
+const setSt=t=>{const e=$('syncSt');if(e){e.textContent=t;e.style.cursor='pointer'}};
+async function errMsg(r){try{const j=await (r.clone?r.clone():r).json();return (j.error&&j.error.message||'').slice(0,140)}catch(e){return ''}}
 async function sync(){
   if(!CLOUD.project||!sid||syncing)return;syncing=true;setSt('☁ সিঙ্ক হচ্ছে…');
   try{
     const r=await fetch(cUrl());let rem={db:{},del:{}};
-    if(r.ok){const j=await r.json();rem=JSON.parse(j.fields.data.stringValue)}else if(r.status!==404)throw new Error(r.status);
+    if(r.ok){const j=await r.json();rem=JSON.parse(j.fields.data.stringValue)}else{const em=await errMsg(r);if(r.status!==404||!em.includes('Document'))throw new Error(r.status+' '+em)}
     rem.db=rem.db||{};rem.del=rem.del||{};ensureIds(rem.db);
     const before=JSON.stringify(db),m=merge({db,del},rem);db=m.db;del=m.del;persist();
     if(JSON.stringify(db)!==before)render();
     const out=JSON.stringify({db:db,del:del});
-    if(out!==JSON.stringify(rem)){const w=await fetch(cUrl(),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{data:{stringValue:out}}})});if(!w.ok)throw new Error(w.status)}
-    setSt('☁ সিঙ্ক হয়েছে ✓ '+new Date().toLocaleTimeString('bn-BD',{hour:'numeric',minute:'2-digit'}));
-  }catch(e){setSt('☁ সিঙ্ক হয়নি (অফলাইন?) — ডেটা এই ফোনে নিরাপদ আছে')}
+    if(out!==JSON.stringify(rem)){const w=await fetch(cUrl(),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{data:{stringValue:out}}})});if(!w.ok)throw new Error(w.status+' '+await errMsg(w))}
+    setSt('☁ সিঙ্ক হয়েছে ✓ '+new Date().toLocaleTimeString('bn-BD',{hour:'numeric',minute:'2-digit'})+' · কোড: '+sid.slice(0,6)+'… (চাপলে আবার সিঙ্ক)');
+  }catch(e){setSt('☁ সিঙ্ক হয়নি: '+(navigator.onLine?e.message:'অফলাইন')+' · কোড: '+sid.slice(0,6)+'… (চাপলে আবার চেষ্টা) — ডেটা এই ফোনে নিরাপদ')}
   syncing=false;
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});addEventListener('online',sync);
@@ -347,13 +349,15 @@ function applyFont(f){font=f;try{localStorage.setItem('bazar-font',f)}catch(e){}
 applyFont(font);
 function renderSt(){
   $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
-  $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। অন্য ফোন/কম্পিউটারে একই কোড বসান। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
+  $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
 }
+$('syncSt').onclick=sync;
 $('st').onclick=()=>{renderSt();$('stDlg').showModal()};
 $('stClose').onclick=()=>$('stDlg').close();
 $('fontList').onclick=e=>{const b=e.target.closest('button');if(b){applyFont(b.dataset.font);renderSt()}};
 $('syncBox').onclick=async e=>{
   if(e.target.id==='sidCopy'){try{await navigator.clipboard.writeText(sid);e.target.textContent='কপি হয়েছে ✓'}catch(_){$('sidIn').select()}}
+  if(e.target.id==='sidLink'){const u=location.origin+location.pathname+'#sync='+sid;try{await navigator.clipboard.writeText(u);e.target.textContent='লিংক কপি হয়েছে ✓'}catch(_){$('sidIn').value=u;$('sidIn').select()}}
   if(e.target.id==='sidUse'){const v=$('sidIn').value.trim();if(v.length>=20){sid=v;localStorage.setItem('bazar-sync-id',v);$('stDlg').close();sync()}}
 };
 render();
