@@ -79,6 +79,7 @@ dialog .cancel{background:transparent;color:var(--mute)}
 </head>
 <body>
 <main>
+  <div id="cloud" hidden style="font-size:13px;padding:6px 10px;border-radius:10px;text-align:center;margin-bottom:8px;cursor:pointer;overflow-wrap:anywhere"></div>
   <div class="mbar">
     <button id="prev" aria-label="আগের মাস">‹</button>
     <h1 id="mTitle"></h1>
@@ -328,7 +329,12 @@ let sid=localStorage.getItem('bazar-sync-id')||'',syncT=null,syncing=false;
 {const m=/[#&]sync=([A-Za-z0-9]{20,})/.exec(location.hash);if(m){sid=m[1];try{localStorage.setItem('bazar-sync-id',sid)}catch(e){}history.replaceState(null,'',location.pathname+location.search)}}
 if(CLOUD.project&&!sid){const a=new Uint8Array(16);crypto.getRandomValues(a);sid='bh'+[...a].map(x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem('bazar-sync-id',sid)}
 const cUrl=()=>'https://firestore.googleapis.com/v1/projects/'+CLOUD.project+'/databases/(default)/documents/ledgers/'+sid+'?key='+CLOUD.key;
-const setSt=t=>{const e=$('syncSt');if(e){e.textContent=t;e.style.cursor='pointer'}};
+const setSt=t=>{const e=$('syncSt');if(e){e.textContent=t;e.style.cursor='pointer'}
+  const c=$('cloud');if(!c||t.includes('হচ্ছে'))return;c.hidden=false;
+  if(t.includes('✓')){c.textContent='☁ ক্লাউডে সেভ আছে ✓';c.style.cssText+=';background:var(--soft);color:var(--acc);border:1px solid transparent'}
+  else{c.textContent='⚠ ক্লাউডে সেভ হয়নি — ডেটা শুধু এই ব্রাউজারে আছে। '+t.replace('☁ সিঙ্ক হয়নি: ','').split(' · ')[0]+' (চাপলে আবার চেষ্টা)';c.style.cssText+=';background:transparent;color:var(--warn);border:1px solid var(--warn)'}
+};
+addEventListener('DOMContentLoaded',()=>{const c=$('cloud');if(c)c.onclick=()=>sync()});
 async function errMsg(r){try{const j=await (r.clone?r.clone():r).json();return (j.error&&j.error.message||'').slice(0,140)}catch(e){return ''}}
 async function sync(){
   if(!CLOUD.project||!sid||syncing)return;syncing=true;setSt('☁ সিঙ্ক হচ্ছে…');
@@ -355,7 +361,7 @@ function renderSt(){
   $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
   $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
 }
-const APP_VER='2026-11-21-4';
+const APP_VER='2026-11-21-5';
 if(/[?&]v=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);
 async function wipeCaches(){try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}catch(e){}}
 async function checkUpdate(){
