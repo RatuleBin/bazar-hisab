@@ -112,6 +112,7 @@ dialog .cancel{background:transparent;color:var(--mute)}
 <dialog id="stDlg"><h3>⚙️ সেটিংস</h3>
   <label>ফন্ট বেছে নিন</label><div id="fontList" class="sugg" style="justify-content:flex-start;margin-top:4px"></div>
   <label style="margin-top:16px">☁ সব ডিভাইসে ডেটা মেলানো (সিঙ্ক)</label><div id="syncBox"></div>
+  <button class="ghost" id="stFix" style="margin-top:14px;width:100%">🔄 অ্যাপ রিফ্রেশ (ক্যাশ পরিষ্কার — ডেটা থাকবে)</button><div id="verTx" style="font-size:12px;color:var(--mute);text-align:center;margin-top:4px"></div>
   <div class="row"><button id="stClose">বন্ধ</button></div></dialog>
 <div class="toast" id="toast" hidden><span id="tMsg"></span><button id="tUndo">ফিরিয়ে আনুন</button></div>
 
@@ -334,23 +335,34 @@ async function sync(){
     if(r.ok){const j=await r.json();rem=JSON.parse(j.fields.data.stringValue)}else{const em=await errMsg(r);if(r.status!==404||!em.includes('Document'))throw new Error(r.status+' '+em)}
     rem.db=rem.db||{};rem.del=rem.del||{};ensureIds(rem.db);
     const before=JSON.stringify(db),m=merge({db,del},rem);db=m.db;del=m.del;persist();
-    if(JSON.stringify(db)!==before)render();
+    if(JSON.stringify(db)!==before)softRender();
     const out=JSON.stringify({db:db,del:del});
     if(out!==JSON.stringify(rem)){const w=await fetch(cUrl(),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{data:{stringValue:out}}})});if(!w.ok)throw new Error(w.status+' '+await errMsg(w))}
     setSt('☁ সিঙ্ক হয়েছে ✓ '+new Date().toLocaleTimeString('bn-BD',{hour:'numeric',minute:'2-digit'})+' · কোড: '+sid.slice(0,6)+'… (চাপলে আবার সিঙ্ক)');
   }catch(e){setSt('☁ সিঙ্ক হয়নি: '+(navigator.onLine?e.message:'অফলাইন')+' · কোড: '+sid.slice(0,6)+'… (চাপলে আবার চেষ্টা) — ডেটা এই ফোনে নিরাপদ')}
   syncing=false;
 }
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});addEventListener('online',sync);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){sync();checkUpdate()}});addEventListener('online',sync);
 const FONTS={'Hind Siliguri':'Hind+Siliguri:wght@400;500;600;700','Noto Sans Bengali':'Noto+Sans+Bengali:wght@400;500;600;700','Anek Bangla':'Anek+Bangla:wght@400;500;600;700','Baloo Da 2':'Baloo+Da+2:wght@400;500;600;700','Noto Serif Bengali':'Noto+Serif+Bengali:wght@400;500;600;700'};
 let font=localStorage.getItem('bazar-font')||'Hind Siliguri';if(!FONTS[font])font='Hind Siliguri';
 function loadFont(f){const id='ff-'+f.replace(/\W/g,'');if(f==='Hind Siliguri'||document.getElementById(id))return;const l=document.createElement('link');l.id=id;l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+FONTS[f]+'&display=swap';document.head.appendChild(l)}
 function applyFont(f){font=f;try{localStorage.setItem('bazar-font',f)}catch(e){}loadFont(f);document.documentElement.style.setProperty('--ff',"'"+f+"','Hind Siliguri','Noto Sans Bengali',Kalpurush,SolaimanLipi,system-ui,sans-serif")}
 applyFont(font);
 function renderSt(){
+  $('verTx').textContent='সংস্করণ '+APP_VER;
   $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
   $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
 }
+const APP_VER='2026-11-21-3';
+if(/[?&]v=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);
+async function wipeCaches(){try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}catch(e){}}
+async function checkUpdate(){
+  try{const t=await(await fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'})).text(),m=/APP_VER=\x27([\w.-]+)\x27/.exec(t);
+  if(m&&m[1]!==APP_VER&&sessionStorage.getItem('bazar-upd')!==m[1]){sessionStorage.setItem('bazar-upd',m[1]);await wipeCaches();location.replace(location.pathname+'?v='+m[1])}}catch(e){}
+}
+let pT=null;
+function softRender(){const a=document.activeElement;if(a&&a.closest&&a.closest('#list')&&a.tagName==='INPUT'&&a.type!=='date'&&a.value){clearTimeout(pT);pT=setTimeout(softRender,2000);return}render()}
+$('stFix').onclick=async()=>{await wipeCaches();location.replace(location.pathname+'?v='+Date.now())};
 $('syncSt').onclick=sync;
 $('st').onclick=()=>{renderSt();$('stDlg').showModal()};
 $('stClose').onclick=()=>$('stDlg').close();
@@ -363,11 +375,11 @@ $('syncBox').onclick=async e=>{
 render();
 (async()=>{
   try{const r0=await idbGet('db');if(r0){const r=JSON.parse(r0);r.db=r.db||{};ensureIds(r.db);const b=JSON.stringify(db),m=merge({db,del},{db:r.db,del:r.del||{}});db=m.db;del=m.del;if(JSON.stringify(db)!==b)render()}}catch(e){}
-  persist();sync();
+  persist();sync();checkUpdate();
 })();
 </script>
 <script>
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{}));let rl=false,had=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!rl){rl=true;location.reload()}})}
 let dip=null;
 addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();dip=e;

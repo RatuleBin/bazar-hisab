@@ -1,7 +1,8 @@
-const C='bazar-v2';
-self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png'])));self.skipWaiting()});
+const C='bazar-v3',F=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>Promise.all(F.map(u=>fetch(u,{cache:'no-store'}).then(r=>r.ok&&c.put(u,r)).catch(()=>{})))));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET'||e.request.url.includes('firestore.googleapis.com'))return;
-  e.respondWith(fetch(e.request).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp));return r}).catch(()=>caches.match(e.request).then(m=>m||caches.match('index.html'))));
+  const r=e.request;if(r.method!=='GET'||r.url.includes('firestore.googleapis.com'))return;
+  const same=new URL(r.url).origin===location.origin;
+  e.respondWith(fetch(same?new Request(r,{cache:'no-store'}):r).then(x=>{if(x.ok||x.type==='opaque'){const cp=x.clone();caches.open(C).then(c=>c.put(r,cp)).catch(()=>{})}return x}).catch(()=>caches.match(r).then(m=>m||caches.match('index.html'))));
 });
