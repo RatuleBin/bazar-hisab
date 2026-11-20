@@ -297,7 +297,7 @@ document.addEventListener('change',e=>{
   }
 });
 /* ===== ডেটা নিরাপত্তা, সিঙ্ক, ফন্ট ===== */
-const CLOUD={project:'',key:''}; // README দেখুন: Firebase projectId ও apiKey এখানে বসান
+const CLOUD={project:'bazar-34aa6',key:'AIzaSyCGvpJ505oAynnP41UqEVCK0wiL5RMS9tk'}; // README দেখুন: Firebase projectId ও apiKey এখানে বসান
 const uid=()=>'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const isM=k=>/^\d{4}-\d{2}$/.test(k);
 function ensureIds(d){Object.keys(d).forEach(k=>{if(!isM(k)||!Array.isArray(d[k]))return;const us=new Set();d[k].forEach((i,x)=>{if(!i.id){let id='i-'+k+'-'+i.name;if(us.has(id))id+='-'+x;i.id=id}us.add(i.id);i.paid=i.paid||[];const ps=new Set();i.paid.forEach((p,j)=>{if(!p.id){let q='p-'+i.id+'-'+p.a+'-'+(p.d||'')+'-'+(p.n||'');if(ps.has(q))q+='-'+j;p.id=q}ps.add(p.id)})})})}
