@@ -356,12 +356,13 @@ let font=localStorage.getItem('bazar-font')||'Hind Siliguri';if(!FONTS[font])fon
 function loadFont(f){const id='ff-'+f.replace(/\W/g,'');if(f==='Hind Siliguri'||document.getElementById(id))return;const l=document.createElement('link');l.id=id;l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+FONTS[f]+'&display=swap';document.head.appendChild(l)}
 function applyFont(f){font=f;try{localStorage.setItem('bazar-font',f)}catch(e){}loadFont(f);document.documentElement.style.setProperty('--ff',"'"+f+"','Hind Siliguri','Noto Sans Bengali',Kalpurush,SolaimanLipi,system-ui,sans-serif")}
 applyFont(font);
+async function sidFromPass(p){const E=new TextEncoder(),k=await crypto.subtle.importKey('raw',E.encode(p),'PBKDF2',false,['deriveBits']),b=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:E.encode('bazar-hisab-v1'),iterations:150000},k,128);return 'bh'+[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 function renderSt(){
   $('verTx').textContent='সংস্করণ '+APP_VER;
   $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
-  $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
+  $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। প্রতিটি ডিভাইসের কোড একই হতে হবে — না হলে ডেটা আলাদা থাকে। অন্য ডিভাইসে কোড বসান, অথবা “লিংক কপি” করে ওই ডিভাইসের ব্রাউজারে খুলুন। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button><button id="sidLink">লিংক কপি</button></div><label style="margin-top:14px">অথবা পাসওয়ার্ড দিয়ে যুক্ত করুন</label><input id="pwIn" type="password" autocomplete="off" placeholder="সব ডিভাইসে একই পাসওয়ার্ড (কমপক্ষে ৮ অক্ষর)"><p id="pwMsg" style="font-size:12px;color:var(--warn);margin:4px 0"></p><button id="pwUse" style="width:100%">পাসওয়ার্ড দিয়ে যুক্ত করুন ও মেলান</button><p style="font-size:12px;color:var(--mute);margin:6px 0 0">শক্ত ও আলাদা পাসওয়ার্ড দিন (সহজ নাম/নম্বর নয়)। ভুলে গেলে ক্লাউডের ডেটা ফেরত পাওয়া যাবে না। এই ডিভাইসের ডেটা মুছে যাবে না, মিলিয়ে নেওয়া হবে।</p>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
 }
-const APP_VER='2026-11-21-5';
+const APP_VER='2026-11-21-6';
 if(/[?&]v=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);
 async function wipeCaches(){try{const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}catch(e){}try{const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}catch(e){}}
 async function checkUpdate(){
@@ -393,6 +394,8 @@ $('fontList').onclick=e=>{const b=e.target.closest('button');if(b){applyFont(b.d
 $('syncBox').onclick=async e=>{
   if(e.target.id==='sidCopy'){try{await navigator.clipboard.writeText(sid);e.target.textContent='কপি হয়েছে ✓'}catch(_){$('sidIn').select()}}
   if(e.target.id==='sidLink'){const u=location.origin+location.pathname+'#sync='+sid;try{await navigator.clipboard.writeText(u);e.target.textContent='লিংক কপি হয়েছে ✓'}catch(_){$('sidIn').value=u;$('sidIn').select()}}
+  if(e.target.id==='pwUse'){const v=$('pwIn').value;if(v.length<8){$('pwMsg').textContent='কমপক্ষে ৮ অক্ষর দিন';return}
+    try{sid=await sidFromPass(v);localStorage.setItem('bazar-sync-id',sid);$('stDlg').close();sync()}catch(_){$('pwMsg').textContent='এই ব্রাউজারে পাসওয়ার্ড সুবিধা কাজ করছে না (https লাগবে)'}}
   if(e.target.id==='sidUse'){const v=$('sidIn').value.trim();if(v.length>=20){sid=v;localStorage.setItem('bazar-sync-id',v);$('stDlg').close();sync()}}
 };
 render();
