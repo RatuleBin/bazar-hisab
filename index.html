@@ -12,7 +12,7 @@
 :root[data-theme="dark"]{--bg:#0F1A17;--card:#172622;--ink:#E6F1ED;--mute:#8FA8A1;--line:#26403A;--acc:#3DCBA0;--accink:#06231B;--warn:#FB923C;--soft:#1D3A32;color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:'Hind Siliguri',system-ui,sans-serif;line-height:1.5;font-size:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ff,'Hind Siliguri','Noto Sans Bengali',Kalpurush,SolaimanLipi,system-ui,sans-serif);line-height:1.5;font-size:16px}
 main{max-width:560px;margin:0 auto;padding:12px 14px 120px}
 input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px;width:100%;min-width:0}
 input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -88,7 +88,8 @@ dialog .cancel{background:transparent;color:var(--mute)}
   <div class="rng" id="rng"></div>
   <input type="search" id="q" placeholder="🔍 খরচ বা নোট খুঁজুন" aria-label="খুঁজুন" style="margin-bottom:10px">
   <div id="list"></div>
-  <div style="text-align:center;margin-top:18px"><button class="ghost" id="rp">📊 রিপোর্ট</button><button class="ghost" id="bk">💾 ব্যাকআপ / ফেরত আনুন</button></div>
+  <div style="text-align:center;margin-top:18px"><button class="ghost" id="rp">📊 রিপোর্ট</button><button class="ghost" id="bk">💾 ব্যাকআপ / ফেরত আনুন</button><button class="ghost" id="st">⚙️ সেটিংস</button></div>
+  <div id="syncSt" style="text-align:center;font-size:12px;color:var(--mute);margin-top:4px"></div>
 </main>
 <button class="fab" id="fab">+ নতুন খরচ</button>
 
@@ -108,13 +109,19 @@ dialog .cancel{background:transparent;color:var(--mute)}
   <p id="bkMsg" style="font-size:13px;color:var(--warn);margin:6px 0 0"></p>
   <div class="row" style="flex-wrap:wrap"><button class="cancel" id="bkClose">বন্ধ</button><button id="bkCopy">কপি</button><button id="bkCsv">CSV</button><button id="bkDl">ফাইল</button><button id="bkRestore">ফেরত আনুন</button></div>
 </dialog>
+<dialog id="stDlg"><h3>⚙️ সেটিংস</h3>
+  <label>ফন্ট বেছে নিন</label><div id="fontList" class="sugg" style="justify-content:flex-start;margin-top:4px"></div>
+  <label style="margin-top:16px">☁ সব ডিভাইসে ডেটা মেলানো (সিঙ্ক)</label><div id="syncBox"></div>
+  <div class="row"><button id="stClose">বন্ধ</button></div></dialog>
 <div class="toast" id="toast" hidden><span id="tMsg"></span><button id="tUndo">ফিরিয়ে আনুন</button></div>
 
 <script>
 const KEY='bazar-hisab-v1';
-let db={};
+let db={},del={};
 try{db=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){db={}}
+try{del=JSON.parse(localStorage.getItem('bazar-del-v1')||'{}')}catch(e){del={}}
 Object.values(db).forEach(l=>Array.isArray(l)&&l.forEach(i=>{i.paid=(i.paid||[]).map(p=>typeof p==='number'?{a:p,d:'',n:''}:p)}));
+ensureIds(db);
 const $=id=>document.getElementById(id);
 const fmt=n=>'৳ '+Number(n).toLocaleString('bn-BD');
 const BN='০১২৩৪৫৬৭৮৯';
@@ -149,7 +156,7 @@ function renderRange(){
   $('rng').innerHTML=h+'</div>';
 }
 const SUGG=['বাসা ভাড়া','চাল','ডাল','তেল','সবজি','মাছ-মাংস','বিদ্যুৎ বিল','গ্যাস বিল','ইন্টারনেট'];
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+function save(){ensureIds(db);persist();clearTimeout(syncT);syncT=setTimeout(sync,1500)}
 function items(){
   if(!db[cur]){
     const prev=Object.keys(db).filter(k=>k<cur).sort().pop();
@@ -204,7 +211,7 @@ function render(){
     +'<div class="row" style="justify-content:flex-end;margin-top:6px"><button class="ghost" data-edit="'+idx+'">✎ সম্পাদনা</button><button class="ghost" data-del="'+idx+'">মুছুন</button></div>'
     +'</div>';
   }).join(''):'<div class="empty">কিছু পাওয়া যায়নি।</div>');
-  if(newFrom&&!qq){const c=newFrom;newFrom=0;toast('আগের মাস থেকে '+bn(c)+'টি আইটেমের বাজেট নিয়ে এসেছি',()=>{db[cur]=[];save();render()},'বাদ দিন')}
+  if(newFrom&&!qq){const c=newFrom;newFrom=0;toast('আগের মাস থেকে '+bn(c)+'টি আইটেমের বাজেট নিয়ে এসেছি',()=>{db[cur].forEach(x=>del[x.id]=Date.now());db[cur]=[];save();render()},'বাদ দিন')}
 }
 function openDlg(idx,name){
   editIdx=idx;const it=idx>=0?items()[idx]:null;
@@ -217,13 +224,13 @@ function saveDlg(){
   if(!n){$('dName').focus();return}
   if(!(a>=0)){$('dAmt').focus();return}
   const list=items();
-  if(editIdx>=0){list[editIdx].name=n;list[editIdx].budget=a}else list.push({name:n,budget:a,paid:[]});
+  if(editIdx>=0){list[editIdx].name=n;list[editIdx].budget=a;list[editIdx].u=Date.now()}else list.push({id:uid(),u:Date.now(),name:n,budget:a,paid:[]});
   save();$('dlg').close();render();
 }
 function addPay(i,v){
   if(!(v>0))return;
   const d=$('d'+i).value,n=$('n'+i).value.trim();if(d)lastDate=d;
-  items()[i].paid.push({a:v,d:d,n:n});save();render();
+  items()[i].paid.push({a:v,d:d,n:n,id:uid()});save();render();
 }
 document.addEventListener('click',e=>{
   const t=e.target.closest('button');if(!t)return;
@@ -231,11 +238,11 @@ document.addEventListener('click',e=>{
   if(d.pay!==undefined){const i=+d.pay;addPay(i,num($('p'+i).value))}
   else if(d.q!==undefined){const [i,q]=d.q.split(',').map(Number);addPay(i,q)}
   else if(d.undo!==undefined){
-    const [i,j]=d.undo.split(',').map(Number),v=list[i].paid.splice(j,1)[0];save();render();
-    toast(fmt(v.a)+' মুছে ফেলা হয়েছে',()=>{list[i].paid.splice(j,0,v);save();render()});
+    const [i,j]=d.undo.split(',').map(Number),v=list[i].paid.splice(j,1)[0];del[v.id]=Date.now();save();render();
+    toast(fmt(v.a)+' মুছে ফেলা হয়েছে',()=>{delete del[v.id];items()[i].paid.splice(j,0,v);save();render()});
   }else if(d.del!==undefined){
-    const i=+d.del,it=list.splice(i,1)[0];save();render();
-    toast('“'+it.name+'” মুছে ফেলা হয়েছে',()=>{list.splice(i,0,it);save();render()});
+    const i=+d.del,it=list.splice(i,1)[0];del[it.id]=Date.now();save();render();
+    toast('“'+it.name+'” মুছে ফেলা হয়েছে',()=>{delete del[it.id];items().splice(i,0,it);save();render()});
   }else if(d.edit!==undefined)openDlg(+d.edit);
   else if(d.sugg!==undefined)openDlg(-1,d.sugg);
 });
@@ -254,9 +261,11 @@ $('bkCopy').onclick=async()=>{$('bkTxt').select();try{await navigator.clipboard.
 $('bkDl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([$('bkTxt').value],{type:'application/json'}));a.download='bazar-hisab-'+todayS+($('bkTxt').value.charAt(0)==='\ufeff'?'.csv':'.json');a.click()};
 $('bkRestore').onclick=()=>{
   try{
-    const d=JSON.parse($('bkTxt').value);
-    Object.entries(d).forEach(([k,l])=>{if(/^\d{4}-\d{2}$/.test(k)&&Array.isArray(l))db[k]=l.map(i=>({name:String(i.name),budget:+i.budget||0,paid:(i.paid||[]).map(p=>typeof p==='number'?{a:p,d:'',n:''}:p)}))});
-    save();$('bkDlg').close();render();toast('ব্যাকআপ ফেরত আনা হয়েছে');
+    const d=JSON.parse($('bkTxt').value),inc={};
+    Object.entries(d).forEach(([k,l])=>{if(/^\d{4}-\d{2}$/.test(k)&&Array.isArray(l))inc[k]=l.map(i=>({id:i.id,u:i.u,name:String(i.name),budget:+i.budget||0,paid:(i.paid||[]).map(p=>typeof p==='number'?{a:p,d:'',n:''}:p)}))});
+    ensureIds(inc);Object.values(inc).forEach(l=>l.forEach(i=>{delete del[i.id];i.paid.forEach(p=>delete del[p.id])}));
+    const m=merge({db,del},{db:inc,del:{}});db=m.db;del=m.del;
+    save();$('bkDlg').close();render();toast('ব্যাকআপ ফেরত আনা হয়েছে (আগের কিছু মোছা হয়নি)');
   }catch(e){$('bkMsg').textContent='লেখাটি ঠিক নেই। ব্যাকআপের পুরো লেখাটা পেস্ট করুন।'}
 };
 $('q').oninput=e=>{q=e.target.value;render()};
@@ -287,7 +296,71 @@ document.addEventListener('change',e=>{
     renderRange();
   }
 });
+/* ===== ডেটা নিরাপত্তা, সিঙ্ক, ফন্ট ===== */
+const CLOUD={project:'',key:''}; // README দেখুন: Firebase projectId ও apiKey এখানে বসান
+const uid=()=>'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const isM=k=>/^\d{4}-\d{2}$/.test(k);
+function ensureIds(d){Object.keys(d).forEach(k=>{if(!isM(k)||!Array.isArray(d[k]))return;const us=new Set();d[k].forEach((i,x)=>{if(!i.id){let id='i-'+k+'-'+i.name;if(us.has(id))id+='-'+x;i.id=id}us.add(i.id);i.paid=i.paid||[];const ps=new Set();i.paid.forEach((p,j)=>{if(!p.id){let q='p-'+i.id+'-'+p.a+'-'+(p.d||'')+'-'+(p.n||'');if(ps.has(q))q+='-'+j;p.id=q}ps.add(p.id)})})})}
+function merge(A,B){
+  const dl=Object.assign({},A.del,B.del),o={};
+  new Set([...Object.keys(A.db),...Object.keys(B.db)].filter(isM)).forEach(k=>{
+    const m=new Map();
+    [A.db[k],B.db[k]].forEach(l=>(l||[]).forEach(i=>{
+      if(!i.id||dl[i.id])return;
+      const e=m.get(i.id);
+      if(!e){m.set(i.id,Object.assign({},i,{paid:(i.paid||[]).filter(p=>!dl[p.id])}));return}
+      if((i.u||0)>(e.u||0)){e.name=i.name;e.budget=i.budget;e.u=i.u}
+      const ids=new Set(e.paid.map(p=>p.id));
+      (i.paid||[]).forEach(p=>{if(!dl[p.id]&&!ids.has(p.id)){e.paid.push(p);ids.add(p.id)}});
+    }));
+    o[k]=[...m.values()];
+  });
+  return {db:o,del:dl};
+}
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('bazar',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function idbSet(k,v){try{const d=await idb();return await new Promise(r=>{const t=d.transaction('k','readwrite');t.objectStore('k').put(v,k);t.oncomplete=()=>r(1);t.onerror=()=>r(0)})}catch(e){}}
+async function idbGet(k){try{const d=await idb();return await new Promise(r=>{const q=d.transaction('k').objectStore('k').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem('bazar-del-v1',JSON.stringify(del))}catch(e){}idbSet('db',JSON.stringify({db:db,del:del}))}
+let sid=localStorage.getItem('bazar-sync-id')||'',syncT=null,syncing=false;
+if(CLOUD.project&&!sid){const a=new Uint8Array(16);crypto.getRandomValues(a);sid='bh'+[...a].map(x=>x.toString(16).padStart(2,'0')).join('');localStorage.setItem('bazar-sync-id',sid)}
+const cUrl=()=>'https://firestore.googleapis.com/v1/projects/'+CLOUD.project+'/databases/(default)/documents/ledgers/'+sid+'?key='+CLOUD.key;
+const setSt=t=>{const e=$('syncSt');if(e)e.textContent=t};
+async function sync(){
+  if(!CLOUD.project||!sid||syncing)return;syncing=true;setSt('☁ সিঙ্ক হচ্ছে…');
+  try{
+    const r=await fetch(cUrl());let rem={db:{},del:{}};
+    if(r.ok){const j=await r.json();rem=JSON.parse(j.fields.data.stringValue)}else if(r.status!==404)throw new Error(r.status);
+    rem.db=rem.db||{};rem.del=rem.del||{};ensureIds(rem.db);
+    const before=JSON.stringify(db),m=merge({db,del},rem);db=m.db;del=m.del;persist();
+    if(JSON.stringify(db)!==before)render();
+    const out=JSON.stringify({db:db,del:del});
+    if(out!==JSON.stringify(rem)){const w=await fetch(cUrl(),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{data:{stringValue:out}}})});if(!w.ok)throw new Error(w.status)}
+    setSt('☁ সিঙ্ক হয়েছে ✓ '+new Date().toLocaleTimeString('bn-BD',{hour:'numeric',minute:'2-digit'}));
+  }catch(e){setSt('☁ সিঙ্ক হয়নি (অফলাইন?) — ডেটা এই ফোনে নিরাপদ আছে')}
+  syncing=false;
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});addEventListener('online',sync);
+const FONTS={'Hind Siliguri':'Hind+Siliguri:wght@400;500;600;700','Noto Sans Bengali':'Noto+Sans+Bengali:wght@400;500;600;700','Anek Bangla':'Anek+Bangla:wght@400;500;600;700','Baloo Da 2':'Baloo+Da+2:wght@400;500;600;700','Noto Serif Bengali':'Noto+Serif+Bengali:wght@400;500;600;700'};
+let font=localStorage.getItem('bazar-font')||'Hind Siliguri';if(!FONTS[font])font='Hind Siliguri';
+function loadFont(f){const id='ff-'+f.replace(/\W/g,'');if(f==='Hind Siliguri'||document.getElementById(id))return;const l=document.createElement('link');l.id=id;l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+FONTS[f]+'&display=swap';document.head.appendChild(l)}
+function applyFont(f){font=f;try{localStorage.setItem('bazar-font',f)}catch(e){}loadFont(f);document.documentElement.style.setProperty('--ff',"'"+f+"','Hind Siliguri','Noto Sans Bengali',Kalpurush,SolaimanLipi,system-ui,sans-serif")}
+applyFont(font);
+function renderSt(){
+  $('fontList').innerHTML=Object.keys(FONTS).map(f=>{loadFont(f);return '<button data-font="'+f+'" style="font-family:\''+f+'\',sans-serif;'+(f===font?'outline:2px solid var(--acc)':'')+'">বাজার হিসাব ১২৩<small style="display:block;font-size:11px;opacity:.7">'+f+'</small></button>'}).join('');
+  $('syncBox').innerHTML=CLOUD.project?'<p style="font-size:13px;color:var(--mute);margin:0 0 6px">এই কোড দিয়ে সব ডিভাইসের ডেটা মেলে। অন্য ফোন/কম্পিউটারে একই কোড বসান। কোডটা পাসওয়ার্ডের মতো গোপন রাখুন।</p><input id="sidIn" value="'+sid+'"><div class="row" style="margin-top:8px;flex-wrap:wrap"><button id="sidCopy">কোড কপি</button><button id="sidUse">কোড বসান ও মেলান</button></div>':'<p style="font-size:13px;color:var(--mute);margin:0">ক্লাউড সিঙ্ক এখনো চালু করা হয়নি (README দেখুন)। এখন ডেটা এই ডিভাইসে দুই জায়গায় সংরক্ষিত থাকে।</p>';
+}
+$('st').onclick=()=>{renderSt();$('stDlg').showModal()};
+$('stClose').onclick=()=>$('stDlg').close();
+$('fontList').onclick=e=>{const b=e.target.closest('button');if(b){applyFont(b.dataset.font);renderSt()}};
+$('syncBox').onclick=async e=>{
+  if(e.target.id==='sidCopy'){try{await navigator.clipboard.writeText(sid);e.target.textContent='কপি হয়েছে ✓'}catch(_){$('sidIn').select()}}
+  if(e.target.id==='sidUse'){const v=$('sidIn').value.trim();if(v.length>=20){sid=v;localStorage.setItem('bazar-sync-id',v);$('stDlg').close();sync()}}
+};
 render();
+(async()=>{
+  try{const r0=await idbGet('db');if(r0){const r=JSON.parse(r0);r.db=r.db||{};ensureIds(r.db);const b=JSON.stringify(db),m=merge({db,del},{db:r.db,del:r.del||{}});db=m.db;del=m.del;if(JSON.stringify(db)!==b)render()}}catch(e){}
+  persist();sync();
+})();
 </script>
 <script>
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
